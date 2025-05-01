@@ -376,21 +376,12 @@ kk () {
         GIT_TOPLEVEL=$(kk-git -c core.quotepath=false rev-parse --show-toplevel 2>/dev/null)
         if [[ $? -eq 0 ]]; then
           IS_GIT_REPO=1
-
-          kk-git ls-files -o -i --exclude-per-directory="$GIT_TOPLEVEL/.gitignore" --directory "$PWD" | while IFS= read ln; do
-            fn="${ln%/}"
-            if [[ "$fn" =~ .*'/'.* ]]; then continue; fi
-            VCS_STATUS["$fn"]="!!"
-          done
-
-          kk-git ls-files -c --deduplicate | while IFS= read ln; do
-            fn="${ln%%/*}"
-            debug "(=) fn[$fn] $base_dir/${fn}: =="
+          kk-git ls-files -c --deduplicate | cut -d/ -f1 | sort -u | while IFS= read fn; do
             VCS_STATUS["$fn"]="=="
           done
 
           local changed=0
-          kk-git status --porcelain . | while IFS= read ln; do
+          kk-git status --porcelain --ignored . 2>/dev/null | while IFS= read ln; do
             fn="${ln:3}"
             if [[ "$fn" == '"'*'"' ]]; then
               # Remove quotes(") from the file names containing special characters(', ", \, emoji, hangul)
@@ -399,53 +390,28 @@ kk () {
             fn="$GIT_TOPLEVEL/${fn}"
             fn="${${${fn#$PWD/}:-.}%/}"
             st="${ln:0:2}"
-            #debug "(-) $base_dir/${fn}: [$st]"
-            if [[ "$fn" =~ .*'/'.* ]]; then
-              # There is a change inside the directory "$fn"
-              debug "(0) $base_dir/${fn%%/*}: [${VCS_STATUS[${fn%%/*}]}] -> [//]"
-              VCS_STATUS["${fn%%/*}"]="//"
-            else
-              if [[ "${st:0:1}" == "R" ]]; then
-                fn="${fn#*-> }"
+            VCS_STATUS["${fn}"]="$st"
+            if [[ "$st" != "!!" && "$st" != "??" ]]; then
+              if [[ "$fn" =~ .*/.* ]]; then
+                # There is a change inside the directory "$fn"
+                fn="${fn%%/*}"
+                st="//"
+              else
+                if [[ "${st:0:1}" == "R" ]]; then
+                  fn="${fn#*-> }"
+                fi
               fi
-              debug "(1) $base_dir/${fn}: [${VCS_STATUS[${fn}]}] -> [$st]"
               VCS_STATUS["${fn}"]="$st"
+              changed=1
             fi
-            changed=1
           done
 
           if [[ "$o_all" != "" && "$o_almost_all" == "" && "$o_no_directory" == "" ]]; then
             if [[ -z "${VCS_STATUS["."]}" ]]; then
               if [[ $changed -eq 1 ]]; then
-                debug "(2) $base_dir: [${VCS_STATUS["."]}] -> [//]"
                 VCS_STATUS["."]="//"
-              else
-                debug "(3) $base_dir: [${VCS_STATUS["."]}] -> [==]"
-                VCS_STATUS["."]="=="
-              fi
-            fi
-
-            if [[ "$PWD" =~ "$GIT_TOPLEVEL/".* ]]; then
-              # check the parent directory
-              debug "(4) $base_dir/..: [${VCS_STATUS[".."]}]-> [==]"
-              VCS_STATUS[".."]="=="
-              if [[ $changed -eq 1 ]]; then
-                debug "(5) $base_dir/..: [${VCS_STATUS[".."]}]-> [//]"
-                VCS_STATUS[".."]="//"
-              else
-                if builtin cd -q .. 2>/dev/null; then
-                  kk-git ls-files -o -c -i --exclude-per-directory="$GIT_TOPLEVEL/.gitignore" --directory "$PWD" | while IFS= read ln; do
-                    fn="${ln%/}"
-                    if [[ "$fn" == "." ]]; then
-                      debug "(6) $base_dir/..: [${VCS_STATUS[".."]}] -> [!!]"
-                      VCS_STATUS[".."]="!!"
-                    fi
-                  done
-
-                  kk-git status --porcelain . | while IFS= read ln; do
-                    debug "(7) $base_dir/..: [${VCS_STATUS[".."]}] -> [//]"
-                    VCS_STATUS[".."]="//"
-                  done
+                if [[ "$PWD" =~ ${GIT_TOPLEVEL}/.* ]]; then
+                  VCS_STATUS[".."]="//"
                 fi
               fi
             fi
@@ -583,7 +549,6 @@ kk () {
             STATUS="??"
           fi
         fi
-        debug "NAME:[$NAME](len=${#NAME}), STATUS[$STATUS]"
 
         if [[ "$STATUS" == "" ]]; then
           REPOMARKER="  "; # outside repository
@@ -594,7 +559,7 @@ kk () {
         elif [[ "$STATUS" == "!!"  ]]; then
           REPOMARKER=$' \e[38;5;238m|\e[0m'; # ignored
         elif [[ "$STATUS" == "??" ]]; then
-          REPOMARKER=$' \e[38;5;196m+\e[0m'; # untracked
+          REPOMARKER=$' \e[38;5;238m?\e[0m'; # untracked
         elif [[ "${STATUS:1:1}" == " " ]]; then
           REPOMARKER=$' \e[38;5;82m+\e[0m'; # index and work tree matches
         elif [[ "${STATUS:0:1}" == " " ]]; then
