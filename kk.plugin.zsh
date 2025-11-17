@@ -111,10 +111,15 @@ kk () {
 
   # Create numfmt local function
   numfmt_local () {
-    if [[ "$o_si" != "" ]]; then
-      $numfmt_cmd --to=si "$@"
+    # do not rum the numfmt for an empty string to avoid a warning
+    if [ -z "$@" ]; then
+      "$@"
     else
-      $numfmt_cmd --to=iec "$@"
+      if [[ "$o_si" != "" ]]; then
+        $numfmt_cmd --to=si "$@"
+      else
+        $numfmt_cmd --to=iec "$@"
+      fi
     fi
   }
 
