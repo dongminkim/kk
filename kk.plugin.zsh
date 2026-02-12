@@ -270,24 +270,24 @@ _kk_format_repomarker() {
   REPOMARKER=""
   (( IS_GIT_REPO == 0 )) && return
 
-  local status="${VCS_STATUS["$name"]}"
+  local st="${VCS_STATUS["$name"]}"
 
   # Inherit parent directory's ignored/untracked status
   if [[ "$name" != ".." ]]; then
     if [[ "${VCS_STATUS["."]}" == "!!" || "${VCS_STATUS[".."]}" == "!!" ]]; then
-      status="!!"
+      st="!!"
     elif [[ "${VCS_STATUS["."]}" == "??" ]]; then
-      status="??"
+      st="??"
     fi
   fi
 
-  case "$status" in
+  case "$st" in
     "")    REPOMARKER="  ";;                                  # outside repository
     "==")  REPOMARKER=$' \e[38;5;82m|\e[0m';;                 # tracked, not modified
     "//")  REPOMARKER=$' \e[38;5;226m+\e[0m';;                # changes inside directory
     "!!")  REPOMARKER=$' \e[38;5;238m|\e[0m';;                 # ignored
     "??")  REPOMARKER=$' \e[38;5;238m?\e[0m';;                 # untracked
-    ??" ") REPOMARKER=$' \e[38;5;82m+\e[0m';;                 # index matches work tree
+    ?" ")  REPOMARKER=$' \e[38;5;82m+\e[0m';;                 # index matches work tree
     " "?)  REPOMARKER=$' \e[38;5;196m+\e[0m';;                # work tree changed
     *)     REPOMARKER=$' \e[38;5;214m+\e[0m';;                # both index and work tree changed
   esac
