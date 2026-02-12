@@ -295,29 +295,106 @@ _kk_format_repomarker() {
 
 # =============================================================================
 # Color a filename based on its file type
+# Args: $1 = file path (for type detection), $2 = raw permission string
+# Uses/Sets: COLORED_NAME (must be set before calling)
 # Reads: K_COLOR_* variables
-# Args: $1=name $2=is_dir $3=is_sym $4=is_sock $5=is_pipe $6=is_exec
-#       $7=is_block $8=is_char $9=has_uid $10=has_gid $11=has_sticky $12=is_world_w
-# Sets: COLORED_NAME
 # =============================================================================
 _kk_color_filename() {
-  COLORED_NAME="$1"
-  local -i is_dir=$2 is_sym=$3 is_sock=$4 is_pipe=$5 is_exec=$6
-  local -i is_block=$7 is_char=$8 has_uid=$9 has_gid=${10} has_sticky=${11} is_world_w=${12}
+  local path="$1" perms="$2" color=""
 
-  if (( is_dir )); then
-    (( is_world_w && has_sticky )) && COLORED_NAME=$'\e['"$K_COLOR_TW"'m'"$COLORED_NAME"$'\e[0m'
-    (( is_world_w ))               && COLORED_NAME=$'\e['"$K_COLOR_OW"'m'"$COLORED_NAME"$'\e[0m'
-    COLORED_NAME=$'\e['"$K_COLOR_DI"'m'"$COLORED_NAME"$'\e[0m'
-  elif (( is_sym ));   then COLORED_NAME=$'\e['"$K_COLOR_LN"'m'"$COLORED_NAME"$'\e[0m'
-  elif (( is_sock ));  then COLORED_NAME=$'\e['"$K_COLOR_SO"'m'"$COLORED_NAME"$'\e[0m'
-  elif (( is_pipe ));  then COLORED_NAME=$'\e['"$K_COLOR_PI"'m'"$COLORED_NAME"$'\e[0m'
-  elif (( has_uid ));  then COLORED_NAME=$'\e['"$K_COLOR_SU"'m'"$COLORED_NAME"$'\e[0m'
-  elif (( has_gid ));  then COLORED_NAME=$'\e['"$K_COLOR_SG"'m'"$COLORED_NAME"$'\e[0m'
-  elif (( is_exec ));  then COLORED_NAME=$'\e['"$K_COLOR_EX"'m'"$COLORED_NAME"$'\e[0m'
-  elif (( is_block )); then COLORED_NAME=$'\e['"$K_COLOR_BD"'m'"$COLORED_NAME"$'\e[0m'
-  elif (( is_char ));  then COLORED_NAME=$'\e['"$K_COLOR_CD"'m'"$COLORED_NAME"$'\e[0m'
+  if [[ -d "$path" ]]; then
+    if [[ $perms[9] == 'w' ]]; then
+      [[ -k "$path" ]] && COLORED_NAME=$'\e['"$K_COLOR_TW"'m'"$COLORED_NAME"$'\e[0m'
+      COLORED_NAME=$'\e['"$K_COLOR_OW"'m'"$COLORED_NAME"$'\e[0m'
+    fi
+    color="$K_COLOR_DI"
+  elif [[ -L "$path" ]]; then color="$K_COLOR_LN"
+  elif [[ -S "$path" ]]; then color="$K_COLOR_SO"
+  elif [[ -p "$path" ]]; then color="$K_COLOR_PI"
+  elif [[ -u "$path" ]]; then color="$K_COLOR_SU"
+  elif [[ -g "$path" ]]; then color="$K_COLOR_SG"
+  elif [[ -x "$path" ]]; then color="$K_COLOR_EX"
+  elif [[ -b "$path" ]]; then color="$K_COLOR_BD"
+  elif [[ -c "$path" ]]; then color="$K_COLOR_CD"
   fi
+
+  [[ -n "$color" ]] && COLORED_NAME=$'\e['"${color}"'m'"$COLORED_NAME"$'\e[0m'
+}
+
+# =============================================================================
+# Format and print a single file entry line
+# Args: $1 = stat variable name
+# Reads (via dynamic scoping from kk):
+#   sz, MAX_LEN, K_EPOCH, SIX_MONTHS,
+#   SIZELIMITS_TO_COLOR, LARGE_FILE_COLOR,
+#   FILEAGES_TO_COLOR, ANCIENT_TIME_COLOR,
+#   IS_GIT_REPO, VCS_STATUS, K_COLOR_*
+# =============================================================================
+_kk_format_and_print_entry() {
+  typeset -A sv=("${(@Pkv)1}")
+
+  local name="${sv[name]}"
+  local raw_perms="${sv[mode]}"
+  local symlink_target="${sv[link]}"
+  local -i filesize="${sv[size]}"
+  local -a date_parts=(${(s:^:)sv[mtime]})
+
+  # --- Pad columns to align output ---
+  local perms="${(r:MAX_LEN[1]:)raw_perms}"
+  local nlinks="${(l:MAX_LEN[2]:)sv[nlink]}"
+  local owner="${(l:MAX_LEN[3]:)sv[uid]}"
+  local group="${(l:MAX_LEN[4]:)sv[gid]}"
+  local size_display="${(l:MAX_LEN[5]:)sz[${sv[name]}]}"
+
+  # --- Permissions ---
+  local perm_out="${perms[1]}${perms[2,4]}${perms[5,7]}${perms[8,10]}"
+
+  # --- Color owner and group ---
+  owner=$'\e[38;5;241m'"$owner"$'\e[0m'
+  group=$'\e[38;5;241m'"$group"$'\e[0m'
+
+  # --- Color file size by threshold ---
+  local -i size_color=LARGE_FILE_COLOR i j
+  for i j in ${SIZELIMITS_TO_COLOR[@]}; do
+    (( filesize <= i )) || continue
+    size_color=$j; break
+  done
+  size_display=$'\e[38;5;'"${size_color}m${size_display}"$'\e[0m'
+
+  # --- Color date by age ---
+  local -i time_diff=$(( K_EPOCH - date_parts[1] ))
+  local -i time_color=ANCIENT_TIME_COLOR
+  for i j in ${FILEAGES_TO_COLOR[@]}; do
+    (( time_diff < i )) || continue
+    time_color=$j; break
+  done
+
+  local date_output
+  if (( time_diff < SIX_MONTHS )); then
+    date_output="${date_parts[2]} ${(r:5:: :)${date_parts[3][0,5]}} ${date_parts[4]}"
+  else
+    date_output="${date_parts[2]} ${(r:6:: :)${date_parts[3][0,5]}} ${date_parts[5]}"
+  fi
+  date_output[1]="${date_output[1]//0/ }"
+  date_output=$'\e[38;5;'"${time_color}m${date_output}"$'\e[0m'
+
+  # --- Display name: strip path, escape ANSI ---
+  local display_name="${${${name%/}##*/}//$'\e'/\\e}"
+
+  # --- Git repo marker ---
+  local REPOMARKER
+  _kk_format_repomarker "$display_name"
+
+  # --- Color filename by type ---
+  local COLORED_NAME="$display_name"
+  _kk_color_filename "$name" "$raw_perms"
+
+  # --- Symlink target ---
+  local sym_target=""
+  [[ -n "$symlink_target" ]] && sym_target=" -> ${symlink_target//$'\e'/\\e}"
+
+  # --- Output ---
+  print -r -- "$perm_out $nlinks $owner $group $size_display $date_output$REPOMARKER $COLORED_NAME$sym_target"
 }
 
 # =============================================================================
@@ -397,6 +474,7 @@ kk() {
   typeset -i TOTAL_BLOCKS IS_GIT_REPO
   typeset GIT_TOPLEVEL
   typeset K_EPOCH="${EPOCHSECONDS:?}"
+  typeset -i SIX_MONTHS=15724800
 
   # Size thresholds: (max_bytes color_code) pairs
   typeset -i LARGE_FILE_COLOR=196
@@ -434,7 +512,6 @@ kk() {
       [[ "$base_dir" == "." && ${#base_show_list} -gt 0 ]] || print -r "${base_dir}:"
     fi
 
-    # ----- Build file list -----
     _kk_build_file_list
 
     # ----- Stat all files and calculate column widths -----
@@ -483,110 +560,13 @@ kk() {
       TOTAL_BLOCKS+=$sv[blocks]
     done
 
-    # Print total block count
     [[ "$base_dir" == "." && ${#base_show_list} -gt 0 ]] || echo "total $TOTAL_BLOCKS"
 
-    # ----- Collect VCS status -----
     _kk_collect_vcs_status
 
     # ----- Format and print each entry -----
-    typeset REPOMARKER COLORED_NAME
-    typeset PERMISSIONS HARDLINKCOUNT OWNER GROUP FILESIZE_OUT
-    typeset -a DATE
-    typeset NAME SYMLINK_TARGET
-    typeset -i IS_DIRECTORY IS_SYMLINK IS_SOCKET IS_PIPE IS_EXECUTABLE
-    typeset -i IS_BLOCK_SPECIAL IS_CHARACTER_SPECIAL
-    typeset -i HAS_UID_BIT HAS_GID_BIT HAS_STICKY_BIT IS_WRITABLE_BY_OTHERS
-    typeset -i FILESIZE COLOR TIME_DIFF TIME_COLOR
-    typeset DATE_OUTPUT STATUS
-
     for statvar in "${STATS_PARAMS_LIST[@]}"; do
-      sv=("${(@Pkv)statvar}")
-
-         PERMISSIONS="${sv[mode]}"
-       HARDLINKCOUNT="${sv[nlink]}"
-               OWNER="${sv[uid]}"
-               GROUP="${sv[gid]}"
-            FILESIZE="${sv[size]}"
-        FILESIZE_OUT="${sz[${sv[name]}]}"
-                DATE=(${(s:^:)sv[mtime]})
-                NAME="${sv[name]}"
-      SYMLINK_TARGET="${sv[link]}"
-
-      # Detect file types
-      IS_DIRECTORY=0  IS_SYMLINK=0  IS_SOCKET=0  IS_PIPE=0
-      IS_EXECUTABLE=0  IS_BLOCK_SPECIAL=0  IS_CHARACTER_SPECIAL=0
-      HAS_UID_BIT=0  HAS_GID_BIT=0  HAS_STICKY_BIT=0  IS_WRITABLE_BY_OTHERS=0
-
-      [[ -d "$NAME" ]] && IS_DIRECTORY=1
-      [[ -L "$NAME" ]] && IS_SYMLINK=1
-      [[ -S "$NAME" ]] && IS_SOCKET=1
-      [[ -p "$NAME" ]] && IS_PIPE=1
-      [[ -x "$NAME" ]] && IS_EXECUTABLE=1
-      [[ -b "$NAME" ]] && IS_BLOCK_SPECIAL=1
-      [[ -c "$NAME" ]] && IS_CHARACTER_SPECIAL=1
-      [[ -u "$NAME" ]] && HAS_UID_BIT=1
-      [[ -g "$NAME" ]] && HAS_GID_BIT=1
-      [[ -k "$NAME" ]] && HAS_STICKY_BIT=1
-      [[ $PERMISSIONS[9] == 'w' ]] && IS_WRITABLE_BY_OTHERS=1
-
-      # Pad columns
-        PERMISSIONS="${(r:MAX_LEN[1]:)PERMISSIONS}"
-      HARDLINKCOUNT="${(l:MAX_LEN[2]:)HARDLINKCOUNT}"
-              OWNER="${(l:MAX_LEN[3]:)OWNER}"
-              GROUP="${(l:MAX_LEN[4]:)GROUP}"
-       FILESIZE_OUT="${(l:MAX_LEN[5]:)FILESIZE_OUT}"
-
-      # Permissions output
-      typeset PERMISSIONS_OUTPUT="${PERMISSIONS[1]}${PERMISSIONS[2,4]}${PERMISSIONS[5,7]}${PERMISSIONS[8,10]}"
-
-      # Color owner and group
-      OWNER=$'\e[38;5;241m'"$OWNER"$'\e[0m'
-      GROUP=$'\e[38;5;241m'"$GROUP"$'\e[0m'
-
-      # Color file size
-      COLOR=LARGE_FILE_COLOR
-      for i j in ${SIZELIMITS_TO_COLOR[@]}; do
-        (( FILESIZE <= i )) || continue
-        COLOR=$j
-        break
-      done
-      FILESIZE_OUT=$'\e[38;5;'"${COLOR}m$FILESIZE_OUT"$'\e[0m'
-
-      # Color date based on age
-      TIME_DIFF=$(( K_EPOCH - DATE[1] ))
-      TIME_COLOR=$ANCIENT_TIME_COLOR
-      for i j in ${FILEAGES_TO_COLOR[@]}; do
-        (( TIME_DIFF < i )) || continue
-        TIME_COLOR=$j
-        break
-      done
-
-      if (( TIME_DIFF < 15724800 )); then
-        DATE_OUTPUT="${DATE[2]} ${(r:5:: :)${DATE[3][0,5]}} ${DATE[4]}"
-      else
-        DATE_OUTPUT="${DATE[2]} ${(r:6:: :)${DATE[3][0,5]}} ${DATE[5]}"
-      fi
-      DATE_OUTPUT[1]="${DATE_OUTPUT[1]//0/ }"
-      DATE_OUTPUT=$'\e[38;5;'"${TIME_COLOR}m${DATE_OUTPUT}"$'\e[0m'
-
-      # Prepare display name (strip path, escape ANSI)
-      NAME="${${${NAME%/}##*/}//$'\e'/\\e}"
-
-      # Git repo marker
-      _kk_format_repomarker "$NAME"
-
-      # Color filename
-      _kk_color_filename "$NAME" \
-        $IS_DIRECTORY $IS_SYMLINK $IS_SOCKET $IS_PIPE $IS_EXECUTABLE \
-        $IS_BLOCK_SPECIAL $IS_CHARACTER_SPECIAL \
-        $HAS_UID_BIT $HAS_GID_BIT $HAS_STICKY_BIT $IS_WRITABLE_BY_OTHERS
-
-      # Format symlink target
-      if [[ -n "$SYMLINK_TARGET" ]]; then SYMLINK_TARGET=" -> ${SYMLINK_TARGET//$'\e'/\\e}"; fi
-
-      # Output
-      print -r -- "$PERMISSIONS_OUTPUT $HARDLINKCOUNT $OWNER $GROUP $FILESIZE_OUT $DATE_OUTPUT$REPOMARKER $COLORED_NAME$SYMLINK_TARGET"
+      _kk_format_and_print_entry "$statvar"
     done
   done
 }
