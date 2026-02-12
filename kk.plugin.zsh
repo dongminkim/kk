@@ -217,7 +217,7 @@ _kk_collect_vcs_status() {
   # Mark all tracked files as clean
   local fn
   kk-git ls-files -c --deduplicate | cut -d/ -f1 | sort -u | while IFS= read fn; do
-    VCS_STATUS["$fn"]="=="
+    VCS_STATUS[$fn]="=="
   done
 
   # Overlay porcelain status
@@ -229,7 +229,7 @@ _kk_collect_vcs_status() {
     fn="$GIT_TOPLEVEL/${fn}"
     fn="${${${fn#$PWD/}:-.}%/}"
     st="${ln:0:2}"
-    VCS_STATUS["${fn}"]="$st"
+    VCS_STATUS[$fn]="$st"
 
     if [[ "$st" != "!!" && "$st" != "??" ]]; then
       if [[ "$fn" =~ .*/.* ]]; then
@@ -238,21 +238,21 @@ _kk_collect_vcs_status() {
       else
         [[ "${st:0:1}" == "R" ]] && fn="${fn#*-> }"
       fi
-      VCS_STATUS["${fn}"]="$st"
+      VCS_STATUS[$fn]="$st"
       changed=1
     fi
   done
 
   # Mark ignored files
   kk-git check-ignore .* * 2>/dev/null | while IFS= read fn; do
-    VCS_STATUS["${fn}"]="!!"
+    VCS_STATUS[$fn]="!!"
   done
 
   # Propagate directory-level change status for . and ..
   if [[ -n "$o_all" && -z "$o_almost_all" && -z "$o_no_directory" ]]; then
-    if [[ -z "${VCS_STATUS["."]}" && $changed -eq 1 ]]; then
-      VCS_STATUS["."]="//"
-      [[ "$PWD" =~ ${GIT_TOPLEVEL}/.* ]] && VCS_STATUS[".."]="//"
+    if [[ -z "${VCS_STATUS[.]}" && $changed -eq 1 ]]; then
+      VCS_STATUS[.]="//"
+      [[ "$PWD" =~ ${GIT_TOPLEVEL}/.* ]] && VCS_STATUS[..]="//"
     fi
   fi
 
@@ -270,13 +270,13 @@ _kk_format_repomarker() {
   REPOMARKER=""
   (( IS_GIT_REPO == 0 )) && return
 
-  local st="${VCS_STATUS["$name"]}"
+  local st="${VCS_STATUS[$name]}"
 
   # Inherit parent directory's ignored/untracked status
   if [[ "$name" != ".." ]]; then
-    if [[ "${VCS_STATUS["."]}" == "!!" || "${VCS_STATUS[".."]}" == "!!" ]]; then
+    if [[ "${VCS_STATUS[.]}" == "!!" || "${VCS_STATUS[..]}" == "!!" ]]; then
       st="!!"
-    elif [[ "${VCS_STATUS["."]}" == "??" ]]; then
+    elif [[ "${VCS_STATUS[.]}" == "??" ]]; then
       st="??"
     fi
   fi
