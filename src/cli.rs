@@ -2,7 +2,7 @@ use clap::Parser;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
-#[command(name = "kk", about = "A git-aware ls replacement", disable_help_flag = true)]
+#[command(name = "kk", version, about = "A git-aware ls replacement", disable_help_flag = true)]
 pub struct Args {
     /// List entries starting with .
     #[arg(short = 'a', long = "all")]

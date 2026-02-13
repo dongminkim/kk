@@ -61,6 +61,7 @@ kk [options] [DIR...]
 | | `--sort WORD` | Sort by: `none`, `size`, `time`, `ctime`, `status`, `atime`, `access`, `use` |
 | | `--no-vcs` | Do not show git status (faster) |
 | | `--group-directories-first` | Group directories before files |
+| | `--version` | Show version |
 
 ### Examples
 

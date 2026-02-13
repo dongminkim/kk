@@ -144,6 +144,7 @@ fn print_help() {
     eprintln!("\t                        atime or access or use (u)");
     eprintln!("\t        --no-vcs        do not get VCS status (much faster)");
     eprintln!("\t        --help          show this help");
+    eprintln!("\t        --version       show version");
 }
 
 fn collect_vcs_for_file_args(file_args: &[PathBuf]) -> Option<HashMap<String, git::VcsStatus>> {
