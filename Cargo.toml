@@ -1,0 +1,13 @@
+[package]
+name = "kk"
+version = "0.1.0"
+edition = "2021"
+description = "A git-aware ls replacement"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+git2 = "0.20"
+libgit2-sys = { version = "0.18", features = ["vendored"] }
+libc = "0.2"
+chrono = "0.4"
+uzers = "0.12"
