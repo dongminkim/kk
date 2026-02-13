@@ -85,8 +85,12 @@ Each file displays a git status marker in the column before the filename:
 | `+` | red | Work tree modified |
 | `+` | orange | Both index and work tree modified |
 | `+` | yellow | Directory contains changes |
-| `?` | dim | Untracked |
+| `?` | red | Untracked file |
+| `?` | yellow | Directory contains untracked files |
+| `?` | dim | Empty untracked directory |
 | `\|` | dim | Ignored |
+
+Directory entries (`.`, `..`, subdirectories) aggregate statuses from their contents using priority: **untracked > modified > staged > tracked**. Ignored directories with tracked files (e.g. `.ssh/` with `config` tracked via `git add -f`) reflect the actual status of their tracked contents instead of showing as ignored.
 
 ## Project structure
 

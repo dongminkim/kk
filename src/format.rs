@@ -196,8 +196,10 @@ fn format_vcs_marker(status: &VcsStatus) -> String {
     match status {
         VcsStatus::Clean => format!(" \x1b[38;5;82m|\x1b[0m"),
         VcsStatus::DirChanged => format!(" \x1b[38;5;226m+\x1b[0m"),
+        VcsStatus::DirUntracked => format!(" \x1b[38;5;226m?\x1b[0m"),
+        VcsStatus::DirEmptyUntracked => format!(" \x1b[38;5;238m?\x1b[0m"),
         VcsStatus::Ignored => format!(" \x1b[38;5;238m|\x1b[0m"),
-        VcsStatus::Untracked => format!(" \x1b[38;5;238m?\x1b[0m"),
+        VcsStatus::Untracked => format!(" \x1b[38;5;196m?\x1b[0m"),
         VcsStatus::Staged => format!(" \x1b[38;5;82m+\x1b[0m"),
         VcsStatus::WorkTreeChanged => format!(" \x1b[38;5;196m+\x1b[0m"),
         VcsStatus::BothChanged => format!(" \x1b[38;5;214m+\x1b[0m"),

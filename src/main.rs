@@ -11,6 +11,7 @@ use colors::FileColors;
 use entry::FileEntry;
 use sort::{resolve_sort_key, sort_entries};
 use std::fs;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process;
 
@@ -80,7 +81,11 @@ fn main() {
 
         // Collect VCS status
         let vcs_map = if !args.no_vcs {
-            git::collect_vcs_status(dir, args.all, args.almost_all, args.no_directory)
+            if args.directory && !file_args.is_empty() && dir.to_str() == Some(".") {
+                collect_vcs_for_file_args(&file_args)
+            } else {
+                git::collect_vcs_status(dir, args.all, args.almost_all, args.no_directory)
+            }
         } else {
             None
         };
@@ -139,6 +144,24 @@ fn print_help() {
     eprintln!("\t                        atime or access or use (u)");
     eprintln!("\t        --no-vcs        do not get VCS status (much faster)");
     eprintln!("\t        --help          show this help");
+}
+
+fn collect_vcs_for_file_args(file_args: &[PathBuf]) -> Option<HashMap<String, git::VcsStatus>> {
+    let mut result: HashMap<String, git::VcsStatus> = HashMap::new();
+    for path in file_args {
+        let name = match path.file_name() {
+            Some(n) => n.to_string_lossy().into_owned(),
+            None => continue,
+        };
+        let parent = path.parent().unwrap_or(Path::new("."));
+        let parent = if parent.as_os_str().is_empty() { Path::new(".") } else { parent };
+        if let Some(vcs_map) = git::collect_vcs_status(parent, false, false, false) {
+            if let Some(status) = vcs_map.get(&name) {
+                result.insert(name, status.clone());
+            }
+        }
+    }
+    if result.is_empty() { None } else { Some(result) }
 }
 
 fn build_file_list_from_args(file_args: &[PathBuf]) -> Option<Vec<FileEntry>> {
