@@ -104,6 +104,14 @@ src/
   format.rs    Output formatting (column alignment, colors, dates, sizes)
   colors.rs    File type colors, LSCOLORS parsing
   sort.rs      Sorting logic
+tests/
+  integration.rs   End-to-end CLI and git status tests
+```
+
+## Testing
+
+```
+cargo test
 ```
 
 ## Dependencies
