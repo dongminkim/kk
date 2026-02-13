@@ -29,14 +29,46 @@ kk() {
   # Initialize local options
   _kk_init_locals
 
-  # Parse and validate options
-  _kk_parse_options "$@" || return 1
+  # Parse command-line options
+  # Note: zparseopts -D modifies $@ to remove parsed options, leaving only non-option args
+  typeset -a o_all o_almost_all o_human o_si o_directory o_group_directories \
+          o_no_directory o_no_vcs o_sort o_sort_reverse o_help
 
-  # Print help if requested
-  if [[ "${KK_OPTS[help]}" != "" ]]; then
+  zparseopts -E -D \
+             a=o_all -all=o_all \
+             A=o_almost_all -almost-all=o_almost_all \
+             c=o_sort \
+             d=o_directory -directory=o_directory \
+             -group-directories-first=o_group_directories \
+             h=o_human -human=o_human \
+             -si=o_si \
+             n=o_no_directory -no-directory=o_no_directory \
+             -no-vcs=o_no_vcs \
+             r=o_sort_reverse -reverse=o_sort_reverse \
+             -sort:=o_sort \
+             S=o_sort \
+             t=o_sort \
+             u=o_sort \
+             U=o_sort \
+             -help=o_help
+
+  if [[ $? != 0 || "$o_help" != "" ]]; then
     _kk_print_help
-    return 0
+    return 1
   fi
+
+  # Store parsed options in global associative array
+  KK_OPTS[all]="$o_all"
+  KK_OPTS[almost_all]="$o_almost_all"
+  KK_OPTS[human]="$o_human"
+  KK_OPTS[si]="$o_si"
+  KK_OPTS[directory]="$o_directory"
+  KK_OPTS[group_directories]="$o_group_directories"
+  KK_OPTS[no_directory]="$o_no_directory"
+  KK_OPTS[no_vcs]="$o_no_vcs"
+  KK_OPTS[sort]="$o_sort"
+  KK_OPTS[sort_reverse]="$o_sort_reverse"
+  KK_OPTS[help]="$o_help"
 
   # Validate option combinations
   _kk_validate_options || return 1
@@ -59,6 +91,7 @@ kk() {
   fi
 
   # Build list of base directories to process
+  # Now $@ contains only the remaining arguments after option parsing
   _kk_build_base_dirs "$@"
 
   # Get current epoch time for age calculations

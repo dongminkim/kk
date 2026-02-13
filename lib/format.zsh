@@ -84,24 +84,25 @@ _kk_get_age_color() {
 }
 
 # Format date based on age
-# Arguments: time_diff day time year
+# Arguments: time_diff day month time year
 # Returns: formatted date string
 _kk_format_date() {
   local time_diff=$1
   local day=$2
-  local time=$3
-  local year=$4
+  local month=$3
+  local time=$4
+  local year=$5
   local date_output
 
   # Format date to show year if more than 6 months since last modified
   if (( time_diff < 15724800 )); then
-    date_output="${day} ${(r:5:: :)${time[0,5]}} ${year}"
+    date_output="${day} ${(r:5:: :)${month[0,5]}} ${time}"
   else
-    date_output="${day} ${(r:6:: :)${time[0,5]}} $year"  # extra space; 4 digit year instead of 5 digit HH:MM
+    date_output="${day} ${(r:6:: :)${month[0,5]}} $year"  # extra space; 4 digit year instead of 5 digit HH:MM
   fi
 
-  # If day of month begins with zero, replace zero with space
-  date_output="${date_output//0/ }"
+  # If day of month begins with zero, replace zero with space (only first character)
+  date_output[1]="${date_output[1]//0/ }"
 
   echo "$date_output"
 }
@@ -221,7 +222,7 @@ _kk_format_line() {
   local TIME_COLOR=$(_kk_get_age_color "${DATE[1]}")
 
   # Format date output
-  local DATE_OUTPUT=$(_kk_format_date "$TIME_DIFF" "${DATE[2]}" "${DATE[3]}" "${DATE[5]}")
+  local DATE_OUTPUT=$(_kk_format_date "$TIME_DIFF" "${DATE[2]}" "${DATE[3]}" "${DATE[4]}" "${DATE[5]}")
 
   # Apply colour to formated date
   DATE_OUTPUT=$'\e[38;5;'"${TIME_COLOR}m${DATE_OUTPUT}"$'\e[0m'
