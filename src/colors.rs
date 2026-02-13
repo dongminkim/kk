@@ -128,3 +128,168 @@ fn bsd_to_ansi(foreground: char, background: char) -> String {
     };
     format!("{};{}", bg, fg)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn make_entry_with_mode(mode: u32) -> FileEntry {
+        FileEntry {
+            path: PathBuf::from("test"),
+            display_name: "test".to_string(),
+            metadata: std::fs::symlink_metadata("/").unwrap(), // dummy
+            mode,
+            nlinks: 1,
+            owner: "user".to_string(),
+            group: "staff".to_string(),
+            size: 0,
+            mtime: 0,
+            atime: 0,
+            ctime: 0,
+            blocks: 0,
+            symlink_target: None,
+            permission_string: "----------".to_string(),
+        }
+    }
+
+    // ---- bsd_to_ansi tests ----
+
+    #[test]
+    fn test_bsd_to_ansi_blue_fg_default_bg() {
+        // 'e' = blue (34), 'x' = default (0)
+        assert_eq!(bsd_to_ansi('e', 'x'), "0;34");
+    }
+
+    #[test]
+    fn test_bsd_to_ansi_red_fg_green_bg() {
+        // 'b' = red (31), 'c' = green bg (42)
+        assert_eq!(bsd_to_ansi('b', 'c'), "42;31");
+    }
+
+    #[test]
+    fn test_bsd_to_ansi_default_both() {
+        assert_eq!(bsd_to_ansi('x', 'x'), "0;0");
+    }
+
+    #[test]
+    fn test_bsd_to_ansi_all_colors() {
+        assert_eq!(bsd_to_ansi('a', 'x'), "0;30");  // black
+        assert_eq!(bsd_to_ansi('b', 'x'), "0;31");  // red
+        assert_eq!(bsd_to_ansi('c', 'x'), "0;32");  // green
+        assert_eq!(bsd_to_ansi('d', 'x'), "0;33");  // yellow
+        assert_eq!(bsd_to_ansi('e', 'x'), "0;34");  // blue
+        assert_eq!(bsd_to_ansi('f', 'x'), "0;35");  // magenta
+        assert_eq!(bsd_to_ansi('g', 'x'), "0;36");  // cyan
+        assert_eq!(bsd_to_ansi('h', 'x'), "0;37");  // white
+    }
+
+    #[test]
+    fn test_bsd_to_ansi_all_bg_colors() {
+        assert_eq!(bsd_to_ansi('x', 'a'), "40;0");  // black bg
+        assert_eq!(bsd_to_ansi('x', 'b'), "41;0");  // red bg
+        assert_eq!(bsd_to_ansi('x', 'c'), "42;0");  // green bg
+        assert_eq!(bsd_to_ansi('x', 'd'), "43;0");  // yellow bg
+        assert_eq!(bsd_to_ansi('x', 'e'), "44;0");  // blue bg
+        assert_eq!(bsd_to_ansi('x', 'f'), "45;0");  // magenta bg
+        assert_eq!(bsd_to_ansi('x', 'g'), "46;0");  // cyan bg
+        assert_eq!(bsd_to_ansi('x', 'h'), "47;0");  // white bg
+    }
+
+    #[test]
+    fn test_bsd_to_ansi_uppercase() {
+        // Uppercase should work the same (to_ascii_lowercase)
+        assert_eq!(bsd_to_ansi('E', 'X'), "0;34");
+    }
+
+    #[test]
+    fn test_bsd_to_ansi_unknown_defaults() {
+        assert_eq!(bsd_to_ansi('z', 'z'), "0;0"); // unknown → default
+    }
+
+    // ---- color_for tests ----
+
+    #[test]
+    fn test_color_for_directory() {
+        let colors = FileColors::new();
+        let entry = make_entry_with_mode(libc::S_IFDIR as u32 | 0o755);
+        assert_eq!(colors.color_for(&entry), Some(colors.di.as_str()));
+    }
+
+    #[test]
+    fn test_color_for_symlink() {
+        let colors = FileColors::new();
+        let entry = make_entry_with_mode(libc::S_IFLNK as u32 | 0o777);
+        assert_eq!(colors.color_for(&entry), Some(colors.ln.as_str()));
+    }
+
+    #[test]
+    fn test_color_for_socket() {
+        let colors = FileColors::new();
+        let entry = make_entry_with_mode(libc::S_IFSOCK as u32 | 0o755);
+        assert_eq!(colors.color_for(&entry), Some(colors.so.as_str()));
+    }
+
+    #[test]
+    fn test_color_for_fifo() {
+        let colors = FileColors::new();
+        let entry = make_entry_with_mode(libc::S_IFIFO as u32 | 0o644);
+        assert_eq!(colors.color_for(&entry), Some(colors.pi.as_str()));
+    }
+
+    #[test]
+    fn test_color_for_executable() {
+        let colors = FileColors::new();
+        let entry = make_entry_with_mode(libc::S_IFREG as u32 | 0o755);
+        assert_eq!(colors.color_for(&entry), Some(colors.ex.as_str()));
+    }
+
+    #[test]
+    fn test_color_for_regular_file() {
+        let colors = FileColors::new();
+        let entry = make_entry_with_mode(libc::S_IFREG as u32 | 0o644);
+        assert_eq!(colors.color_for(&entry), None);
+    }
+
+    #[test]
+    fn test_color_for_setuid() {
+        let colors = FileColors::new();
+        let entry = make_entry_with_mode(libc::S_IFREG as u32 | libc::S_ISUID as u32 | 0o755);
+        assert_eq!(colors.color_for(&entry), Some(colors.su.as_str()));
+    }
+
+    #[test]
+    fn test_color_for_setgid() {
+        let colors = FileColors::new();
+        let entry = make_entry_with_mode(libc::S_IFREG as u32 | libc::S_ISGID as u32 | 0o755);
+        assert_eq!(colors.color_for(&entry), Some(colors.sg.as_str()));
+    }
+
+    #[test]
+    fn test_color_for_world_writable_dir() {
+        let colors = FileColors::new();
+        let entry = make_entry_with_mode(libc::S_IFDIR as u32 | 0o777);
+        assert_eq!(colors.color_for(&entry), Some(colors.ow.as_str()));
+    }
+
+    #[test]
+    fn test_color_for_sticky_world_writable_dir() {
+        let colors = FileColors::new();
+        let entry = make_entry_with_mode(libc::S_IFDIR as u32 | libc::S_ISVTX as u32 | 0o777);
+        assert_eq!(colors.color_for(&entry), Some(colors.tw.as_str()));
+    }
+
+    #[test]
+    fn test_color_for_block_device() {
+        let colors = FileColors::new();
+        let entry = make_entry_with_mode(libc::S_IFBLK as u32 | 0o660);
+        assert_eq!(colors.color_for(&entry), Some(colors.bd.as_str()));
+    }
+
+    #[test]
+    fn test_color_for_char_device() {
+        let colors = FileColors::new();
+        let entry = make_entry_with_mode(libc::S_IFCHR as u32 | 0o660);
+        assert_eq!(colors.color_for(&entry), Some(colors.cd.as_str()));
+    }
+}

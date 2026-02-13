@@ -266,3 +266,195 @@ pub fn print_entries(
         let _ = writeln!(out, "{}", line);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---- human_readable tests ----
+
+    #[test]
+    fn test_human_readable_zero() {
+        assert_eq!(human_readable(0, false), "0");
+    }
+
+    #[test]
+    fn test_human_readable_below_base() {
+        assert_eq!(human_readable(512, false), "512");
+        assert_eq!(human_readable(1023, false), "1023");
+    }
+
+    #[test]
+    fn test_human_readable_kilobytes() {
+        assert_eq!(human_readable(1024, false), "1K");
+        assert_eq!(human_readable(2048, false), "2K");
+    }
+
+    #[test]
+    fn test_human_readable_megabytes() {
+        assert_eq!(human_readable(1048576, false), "1M");
+    }
+
+    #[test]
+    fn test_human_readable_gigabytes() {
+        assert_eq!(human_readable(1073741824, false), "1G");
+    }
+
+    #[test]
+    fn test_human_readable_si_mode() {
+        assert_eq!(human_readable(999, true), "999");
+        assert_eq!(human_readable(1000, true), "1K");
+        assert_eq!(human_readable(1000000, true), "1M");
+    }
+
+    #[test]
+    fn test_human_readable_ceiling() {
+        // 1025 bytes → should ceil to 2K (not 1K)
+        assert_eq!(human_readable(1025, false), "2K");
+    }
+
+    // ---- color_for_size tests ----
+
+    #[test]
+    fn test_color_for_size_zero() {
+        assert_eq!(color_for_size(0), 46);
+    }
+
+    #[test]
+    fn test_color_for_size_boundaries() {
+        assert_eq!(color_for_size(1024), 46);   // <= 1024
+        assert_eq!(color_for_size(1025), 82);   // <= 2048
+        assert_eq!(color_for_size(2048), 82);   // <= 2048
+        assert_eq!(color_for_size(2049), 118);  // <= 3072
+    }
+
+    #[test]
+    fn test_color_for_size_large() {
+        assert_eq!(color_for_size(524288), 202);  // last threshold
+        assert_eq!(color_for_size(524289), 196);  // beyond all → LARGE_FILE_COLOR
+        assert_eq!(color_for_size(10_000_000), 196);
+    }
+
+    // ---- color_for_age tests ----
+
+    #[test]
+    fn test_color_for_age_future() {
+        assert_eq!(color_for_age(-1), 196); // future timestamp
+    }
+
+    #[test]
+    fn test_color_for_age_recent() {
+        assert_eq!(color_for_age(0), 255);   // just now (< 60)
+        assert_eq!(color_for_age(59), 255);  // still < 60
+    }
+
+    #[test]
+    fn test_color_for_age_minutes() {
+        assert_eq!(color_for_age(60), 252);   // 1 minute (< 3600)
+        assert_eq!(color_for_age(3599), 252); // still < 3600
+    }
+
+    #[test]
+    fn test_color_for_age_hours() {
+        assert_eq!(color_for_age(3600), 250);  // 1 hour (< 86400)
+    }
+
+    #[test]
+    fn test_color_for_age_ancient() {
+        assert_eq!(color_for_age(100_000_000), 236); // very old → ANCIENT_TIME_COLOR
+    }
+
+    // ---- format_date tests ----
+
+    #[test]
+    fn test_format_date_recent() {
+        // Recent date (< 6 months) should show HH:MM format
+        let now = Local::now().timestamp();
+        let date_str = format_date(now, 0);
+        // Should contain colon (HH:MM)
+        assert!(date_str.contains(':'), "Recent date should contain HH:MM, got: {}", date_str);
+    }
+
+    #[test]
+    fn test_format_date_old() {
+        // Old date (> 6 months) should show year
+        let now = Local::now().timestamp();
+        let old_time = now - 20_000_000; // ~7.6 months ago
+        let date_str = format_date(old_time, 20_000_000);
+        // Should contain 4-digit year
+        assert!(date_str.contains("20"), "Old date should contain year, got: {}", date_str);
+        // Should NOT contain colon
+        assert!(!date_str.contains(':'), "Old date should not contain HH:MM, got: {}", date_str);
+    }
+
+    // ---- format_vcs_marker tests ----
+
+    #[test]
+    fn test_vcs_marker_clean() {
+        let m = format_vcs_marker(&VcsStatus::Clean);
+        assert!(m.contains('|'), "Clean should be |");
+        assert!(m.contains("82"), "Clean should be green (82)");
+    }
+
+    #[test]
+    fn test_vcs_marker_staged() {
+        let m = format_vcs_marker(&VcsStatus::Staged);
+        assert!(m.contains('+'), "Staged should be +");
+        assert!(m.contains("82"), "Staged should be green (82)");
+    }
+
+    #[test]
+    fn test_vcs_marker_worktree_changed() {
+        let m = format_vcs_marker(&VcsStatus::WorkTreeChanged);
+        assert!(m.contains('+'), "WorkTreeChanged should be +");
+        assert!(m.contains("196"), "WorkTreeChanged should be red (196)");
+    }
+
+    #[test]
+    fn test_vcs_marker_both_changed() {
+        let m = format_vcs_marker(&VcsStatus::BothChanged);
+        assert!(m.contains('+'), "BothChanged should be +");
+        assert!(m.contains("214"), "BothChanged should be orange (214)");
+    }
+
+    #[test]
+    fn test_vcs_marker_dir_changed() {
+        let m = format_vcs_marker(&VcsStatus::DirChanged);
+        assert!(m.contains('+'), "DirChanged should be +");
+        assert!(m.contains("226"), "DirChanged should be yellow (226)");
+    }
+
+    #[test]
+    fn test_vcs_marker_untracked() {
+        let m = format_vcs_marker(&VcsStatus::Untracked);
+        assert!(m.contains('?'), "Untracked should be ?");
+        assert!(m.contains("196"), "Untracked should be red (196)");
+    }
+
+    #[test]
+    fn test_vcs_marker_dir_untracked() {
+        let m = format_vcs_marker(&VcsStatus::DirUntracked);
+        assert!(m.contains('?'), "DirUntracked should be ?");
+        assert!(m.contains("226"), "DirUntracked should be yellow (226)");
+    }
+
+    #[test]
+    fn test_vcs_marker_dir_empty_untracked() {
+        let m = format_vcs_marker(&VcsStatus::DirEmptyUntracked);
+        assert!(m.contains('?'), "DirEmptyUntracked should be ?");
+        assert!(m.contains("238"), "DirEmptyUntracked should be dim (238)");
+    }
+
+    #[test]
+    fn test_vcs_marker_ignored() {
+        let m = format_vcs_marker(&VcsStatus::Ignored);
+        assert!(m.contains('|'), "Ignored should be |");
+        assert!(m.contains("238"), "Ignored should be dim (238)");
+    }
+
+    #[test]
+    fn test_vcs_marker_none() {
+        let m = format_vcs_marker(&VcsStatus::None);
+        assert_eq!(m, "  ", "None should be two spaces");
+    }
+}

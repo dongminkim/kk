@@ -138,3 +138,143 @@ fn format_permissions(mode: u32, metadata: &fs::Metadata) -> String {
     let _ = metadata; // Could check xattr here
     perms
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Helper: create a dummy metadata for format_permissions testing
+    fn perm_str(mode: u32) -> String {
+        // We need a real Metadata for format_permissions, get one from /
+        let metadata = fs::symlink_metadata("/").unwrap();
+        format_permissions(mode, &metadata)
+    }
+
+    // ---- format_permissions tests ----
+
+    #[test]
+    fn test_permissions_regular_644() {
+        assert_eq!(perm_str(0o100644), "-rw-r--r--");
+    }
+
+    #[test]
+    fn test_permissions_regular_755() {
+        assert_eq!(perm_str(0o100755), "-rwxr-xr-x");
+    }
+
+    #[test]
+    fn test_permissions_directory_755() {
+        assert_eq!(perm_str(0o040755), "drwxr-xr-x");
+    }
+
+    #[test]
+    fn test_permissions_symlink() {
+        assert_eq!(perm_str(0o120777), "lrwxrwxrwx");
+    }
+
+    #[test]
+    fn test_permissions_no_perms() {
+        assert_eq!(perm_str(0o100000), "----------");
+    }
+
+    #[test]
+    fn test_permissions_all_perms() {
+        assert_eq!(perm_str(0o100777), "-rwxrwxrwx");
+    }
+
+    #[test]
+    fn test_permissions_setuid_with_exec() {
+        // setuid + owner execute → 's'
+        assert_eq!(perm_str(0o104755), "-rwsr-xr-x");
+    }
+
+    #[test]
+    fn test_permissions_setuid_without_exec() {
+        // setuid without owner execute → 'S'
+        assert_eq!(perm_str(0o104644), "-rwSr--r--");
+    }
+
+    #[test]
+    fn test_permissions_setgid_with_exec() {
+        // setgid + group execute → 's'
+        assert_eq!(perm_str(0o102755), "-rwxr-sr-x");
+    }
+
+    #[test]
+    fn test_permissions_setgid_without_exec() {
+        // setgid without group execute → 'S'
+        assert_eq!(perm_str(0o102644), "-rw-r-Sr--");
+    }
+
+    #[test]
+    fn test_permissions_sticky_with_exec() {
+        // sticky + other execute → 't'
+        assert_eq!(perm_str(0o041755), "drwxr-xr-t");
+    }
+
+    #[test]
+    fn test_permissions_sticky_without_exec() {
+        // sticky without other execute → 'T'
+        assert_eq!(perm_str(0o041754), "drwxr-xr-T");
+    }
+
+    #[test]
+    fn test_permissions_block_device() {
+        assert_eq!(&perm_str(0o060660)[..1], "b");
+    }
+
+    #[test]
+    fn test_permissions_char_device() {
+        assert_eq!(&perm_str(0o020660)[..1], "c");
+    }
+
+    #[test]
+    fn test_permissions_fifo() {
+        assert_eq!(&perm_str(0o010644)[..1], "p");
+    }
+
+    #[test]
+    fn test_permissions_socket() {
+        assert_eq!(&perm_str(0o140755)[..1], "s");
+    }
+
+    // ---- is_dir tests ----
+
+    #[test]
+    fn test_is_dir_true() {
+        // /usr is a real directory (not a symlink) on macOS
+        let entry = FileEntry::from_path(Path::new("/usr")).unwrap();
+        assert!(entry.is_dir());
+    }
+
+    #[test]
+    fn test_is_dir_false_for_file() {
+        let entry = FileEntry::from_path(Path::new("/etc/hosts")).unwrap();
+        assert!(!entry.is_dir());
+    }
+
+    // ---- is_executable tests ----
+
+    #[test]
+    fn test_is_executable_for_dir() {
+        // Directories have execute bit set
+        let entry = FileEntry::from_path(Path::new("/tmp")).unwrap();
+        assert!(entry.is_executable());
+    }
+
+    // ---- from_path tests ----
+
+    #[test]
+    fn test_from_path_nonexistent() {
+        assert!(FileEntry::from_path(Path::new("/nonexistent_path_xyz")).is_none());
+    }
+
+    #[test]
+    fn test_from_path_valid() {
+        let entry = FileEntry::from_path(Path::new("/tmp"));
+        assert!(entry.is_some());
+        let entry = entry.unwrap();
+        assert!(!entry.display_name.is_empty());
+        assert!(entry.nlinks > 0);
+    }
+}

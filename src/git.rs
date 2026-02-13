@@ -16,7 +16,7 @@ pub enum VcsStatus {
     None,           // outside repository
 }
 
-fn status_priority(status: &VcsStatus) -> u8 {
+pub(crate) fn status_priority(status: &VcsStatus) -> u8 {
     match status {
         VcsStatus::Untracked | VcsStatus::DirUntracked | VcsStatus::DirEmptyUntracked => 4,
         VcsStatus::BothChanged | VcsStatus::WorkTreeChanged | VcsStatus::DirChanged => 3,
@@ -178,7 +178,7 @@ pub fn collect_vcs_status(
     Some(result)
 }
 
-fn aggregate_entries_status(result: &HashMap<String, VcsStatus>) -> VcsStatus {
+pub(crate) fn aggregate_entries_status(result: &HashMap<String, VcsStatus>) -> VcsStatus {
     let mut best: Option<&VcsStatus> = None;
     for (name, status) in result.iter() {
         if name == "." || name == ".." { continue; }
@@ -314,7 +314,7 @@ fn mark_tracked_clean(
     }).ok();
 }
 
-fn git2_status_to_vcs(status: Status) -> VcsStatus {
+pub(crate) fn git2_status_to_vcs(status: Status) -> VcsStatus {
     if status.is_ignored() {
         return VcsStatus::Ignored;
     }
@@ -341,5 +341,235 @@ fn git2_status_to_vcs(status: Status) -> VcsStatus {
         VcsStatus::WorkTreeChanged
     } else {
         VcsStatus::Clean
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---- status_priority tests ----
+
+    #[test]
+    fn test_status_priority_untracked_highest() {
+        assert_eq!(status_priority(&VcsStatus::Untracked), 4);
+        assert_eq!(status_priority(&VcsStatus::DirUntracked), 4);
+        assert_eq!(status_priority(&VcsStatus::DirEmptyUntracked), 4);
+    }
+
+    #[test]
+    fn test_status_priority_modified() {
+        assert_eq!(status_priority(&VcsStatus::BothChanged), 3);
+        assert_eq!(status_priority(&VcsStatus::WorkTreeChanged), 3);
+        assert_eq!(status_priority(&VcsStatus::DirChanged), 3);
+    }
+
+    #[test]
+    fn test_status_priority_staged() {
+        assert_eq!(status_priority(&VcsStatus::Staged), 2);
+    }
+
+    #[test]
+    fn test_status_priority_clean() {
+        assert_eq!(status_priority(&VcsStatus::Clean), 1);
+    }
+
+    #[test]
+    fn test_status_priority_ignored_and_none() {
+        assert_eq!(status_priority(&VcsStatus::Ignored), 0);
+        assert_eq!(status_priority(&VcsStatus::None), 0);
+    }
+
+    #[test]
+    fn test_priority_ordering() {
+        // untracked > modified > staged > clean > ignored
+        assert!(status_priority(&VcsStatus::Untracked) > status_priority(&VcsStatus::WorkTreeChanged));
+        assert!(status_priority(&VcsStatus::WorkTreeChanged) > status_priority(&VcsStatus::Staged));
+        assert!(status_priority(&VcsStatus::Staged) > status_priority(&VcsStatus::Clean));
+        assert!(status_priority(&VcsStatus::Clean) > status_priority(&VcsStatus::Ignored));
+    }
+
+    // ---- git2_status_to_vcs tests ----
+
+    #[test]
+    fn test_git2_status_ignored() {
+        assert_eq!(git2_status_to_vcs(Status::IGNORED), VcsStatus::Ignored);
+    }
+
+    #[test]
+    fn test_git2_status_untracked() {
+        assert_eq!(git2_status_to_vcs(Status::WT_NEW), VcsStatus::Untracked);
+    }
+
+    #[test]
+    fn test_git2_status_staged() {
+        assert_eq!(git2_status_to_vcs(Status::INDEX_NEW), VcsStatus::Staged);
+        assert_eq!(git2_status_to_vcs(Status::INDEX_MODIFIED), VcsStatus::Staged);
+        assert_eq!(git2_status_to_vcs(Status::INDEX_DELETED), VcsStatus::Staged);
+        assert_eq!(git2_status_to_vcs(Status::INDEX_RENAMED), VcsStatus::Staged);
+        assert_eq!(git2_status_to_vcs(Status::INDEX_TYPECHANGE), VcsStatus::Staged);
+    }
+
+    #[test]
+    fn test_git2_status_worktree_changed() {
+        assert_eq!(git2_status_to_vcs(Status::WT_MODIFIED), VcsStatus::WorkTreeChanged);
+        assert_eq!(git2_status_to_vcs(Status::WT_DELETED), VcsStatus::WorkTreeChanged);
+        assert_eq!(git2_status_to_vcs(Status::WT_RENAMED), VcsStatus::WorkTreeChanged);
+        assert_eq!(git2_status_to_vcs(Status::WT_TYPECHANGE), VcsStatus::WorkTreeChanged);
+    }
+
+    #[test]
+    fn test_git2_status_both_changed() {
+        let both = Status::INDEX_MODIFIED | Status::WT_MODIFIED;
+        assert_eq!(git2_status_to_vcs(both), VcsStatus::BothChanged);
+
+        let both2 = Status::INDEX_NEW | Status::WT_MODIFIED;
+        assert_eq!(git2_status_to_vcs(both2), VcsStatus::BothChanged);
+    }
+
+    #[test]
+    fn test_git2_status_clean() {
+        assert_eq!(git2_status_to_vcs(Status::CURRENT), VcsStatus::Clean);
+    }
+
+    #[test]
+    fn test_git2_status_ignored_takes_precedence() {
+        // IGNORED flag should return Ignored even if other flags are set
+        let status = Status::IGNORED | Status::WT_MODIFIED;
+        assert_eq!(git2_status_to_vcs(status), VcsStatus::Ignored);
+    }
+
+    #[test]
+    fn test_git2_status_wt_new_takes_precedence_over_index() {
+        // WT_NEW should return Untracked even with index flags
+        let status = Status::WT_NEW | Status::INDEX_NEW;
+        assert_eq!(git2_status_to_vcs(status), VcsStatus::Untracked);
+    }
+
+    // ---- aggregate_entries_status tests ----
+
+    #[test]
+    fn test_aggregate_empty_map() {
+        let map: HashMap<String, VcsStatus> = HashMap::new();
+        assert_eq!(aggregate_entries_status(&map), VcsStatus::Clean);
+    }
+
+    #[test]
+    fn test_aggregate_all_clean() {
+        let mut map = HashMap::new();
+        map.insert("a.txt".to_string(), VcsStatus::Clean);
+        map.insert("b.txt".to_string(), VcsStatus::Clean);
+        assert_eq!(aggregate_entries_status(&map), VcsStatus::Clean);
+    }
+
+    #[test]
+    fn test_aggregate_with_untracked() {
+        let mut map = HashMap::new();
+        map.insert("a.txt".to_string(), VcsStatus::Clean);
+        map.insert("b.txt".to_string(), VcsStatus::Untracked);
+        // Untracked files → DirUntracked at dir level
+        assert_eq!(aggregate_entries_status(&map), VcsStatus::DirUntracked);
+    }
+
+    #[test]
+    fn test_aggregate_with_worktree_changed() {
+        let mut map = HashMap::new();
+        map.insert("a.txt".to_string(), VcsStatus::Clean);
+        map.insert("b.txt".to_string(), VcsStatus::WorkTreeChanged);
+        // WorkTreeChanged → DirChanged at dir level
+        assert_eq!(aggregate_entries_status(&map), VcsStatus::DirChanged);
+    }
+
+    #[test]
+    fn test_aggregate_with_staged() {
+        let mut map = HashMap::new();
+        map.insert("a.txt".to_string(), VcsStatus::Clean);
+        map.insert("b.txt".to_string(), VcsStatus::Staged);
+        assert_eq!(aggregate_entries_status(&map), VcsStatus::DirChanged);
+    }
+
+    #[test]
+    fn test_aggregate_with_both_changed() {
+        let mut map = HashMap::new();
+        map.insert("a.txt".to_string(), VcsStatus::BothChanged);
+        assert_eq!(aggregate_entries_status(&map), VcsStatus::DirChanged);
+    }
+
+    #[test]
+    fn test_aggregate_dir_empty_untracked_maps_to_dir_untracked() {
+        let mut map = HashMap::new();
+        map.insert("empty_dir".to_string(), VcsStatus::DirEmptyUntracked);
+        assert_eq!(aggregate_entries_status(&map), VcsStatus::DirUntracked);
+    }
+
+    #[test]
+    fn test_aggregate_skips_dot_entries() {
+        let mut map = HashMap::new();
+        map.insert(".".to_string(), VcsStatus::Untracked);
+        map.insert("..".to_string(), VcsStatus::Untracked);
+        map.insert("a.txt".to_string(), VcsStatus::Clean);
+        // . and .. should be ignored in aggregation
+        assert_eq!(aggregate_entries_status(&map), VcsStatus::Clean);
+    }
+
+    #[test]
+    fn test_aggregate_priority_untracked_over_modified() {
+        let mut map = HashMap::new();
+        map.insert("a.txt".to_string(), VcsStatus::WorkTreeChanged);
+        map.insert("b.txt".to_string(), VcsStatus::Untracked);
+        // Untracked (4) > WorkTreeChanged (3)
+        assert_eq!(aggregate_entries_status(&map), VcsStatus::DirUntracked);
+    }
+
+    #[test]
+    fn test_aggregate_priority_modified_over_staged() {
+        let mut map = HashMap::new();
+        map.insert("a.txt".to_string(), VcsStatus::Staged);
+        map.insert("b.txt".to_string(), VcsStatus::WorkTreeChanged);
+        // WorkTreeChanged (3) > Staged (2)
+        assert_eq!(aggregate_entries_status(&map), VcsStatus::DirChanged);
+    }
+
+    #[test]
+    fn test_aggregate_priority_staged_over_clean() {
+        let mut map = HashMap::new();
+        map.insert("a.txt".to_string(), VcsStatus::Clean);
+        map.insert("b.txt".to_string(), VcsStatus::Staged);
+        // Staged (2) > Clean (1) → DirChanged
+        assert_eq!(aggregate_entries_status(&map), VcsStatus::DirChanged);
+    }
+
+    #[test]
+    fn test_aggregate_ignored_entries_ignored() {
+        let mut map = HashMap::new();
+        map.insert("a.txt".to_string(), VcsStatus::Ignored);
+        map.insert("b.txt".to_string(), VcsStatus::Ignored);
+        // All ignored → Ignored (priority 0)
+        assert_eq!(aggregate_entries_status(&map), VcsStatus::Ignored);
+    }
+
+    #[test]
+    fn test_aggregate_clean_and_ignored() {
+        let mut map = HashMap::new();
+        map.insert("a.txt".to_string(), VcsStatus::Ignored);
+        map.insert("b.txt".to_string(), VcsStatus::Clean);
+        // Clean (1) > Ignored (0)
+        assert_eq!(aggregate_entries_status(&map), VcsStatus::Clean);
+    }
+
+    #[test]
+    fn test_aggregate_dir_changed_propagated() {
+        let mut map = HashMap::new();
+        map.insert("subdir".to_string(), VcsStatus::DirChanged);
+        map.insert("a.txt".to_string(), VcsStatus::Clean);
+        assert_eq!(aggregate_entries_status(&map), VcsStatus::DirChanged);
+    }
+
+    #[test]
+    fn test_aggregate_dir_untracked_propagated() {
+        let mut map = HashMap::new();
+        map.insert("subdir".to_string(), VcsStatus::DirUntracked);
+        map.insert("a.txt".to_string(), VcsStatus::Clean);
+        assert_eq!(aggregate_entries_status(&map), VcsStatus::DirUntracked);
     }
 }
