@@ -2,7 +2,9 @@
 name = "kk"
 version = "0.1.0"
 edition = "2021"
-description = "A git-aware ls replacement"
+description = "A fast, git-aware ls replacement"
+license = "MIT"
+repository = "https://github.com/dongminkim/kk"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }

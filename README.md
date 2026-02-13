@@ -14,6 +14,13 @@ A fast, git-aware `ls` replacement written in Rust.
 
 ## Installation
 
+### Homebrew
+
+```
+brew tap dongminkim/kk https://github.com/dongminkim/kk
+brew install dongminkim/kk/kk
+```
+
 ### From source
 
 ```
