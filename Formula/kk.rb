@@ -1,8 +1,8 @@
 class Kk < Formula
   desc "Fast, git-aware ls replacement"
   homepage "https://github.com/dongminkim/kk"
-  url "https://github.com/dongminkim/kk/archive/refs/tags/v0.1.0.tar.gz"
-  sha256 "cba19005c59ec49f61c03bc2f6cbf16093dea8c93bdeb1ffc9ea72af98ef9205"
+  url "https://github.com/dongminkim/kk/archive/refs/tags/v0.2.1.tar.gz"
+  sha256 "8b0118eeda41aeb11d5e5ec1aa5989111445edb0032cf550d7d8c5ff6a595369"
   license "MIT"
   head "https://github.com/dongminkim/kk.git", branch: "main"
 
