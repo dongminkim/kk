@@ -1,5 +1,7 @@
 # kk
 
+![kk-logo](https://user-images.githubusercontent.com/1652790/203277328-23457c63-5073-4b9d-9c0c-090c5d7878a2.png)
+
 A fast, git-aware `ls` replacement written in Rust.
 
 `kk` displays directory listings in a long format with file metadata, colorized output, and inline git status markers. It uses [libgit2](https://libgit2.org/) directly (via `git2` crate) instead of shelling out to `git`, making it significantly faster in large repositories.
